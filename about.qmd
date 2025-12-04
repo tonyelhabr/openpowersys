@@ -1,0 +1,18 @@
+---
+title: Tony ElHabr
+about:
+  template: jolla
+  image: tony-headshot.png
+  links:
+    - icon: github
+      text: Github
+      href: https://github.com/tonyelhabr
+    - icon: bsky
+      text: BlueSky
+      href: https://bsky.app/profile/tonyelhabr.bsky.social
+    - icon: linkedin
+      text: LinkedIn
+      href: https://www.linkedin.com/in/tony-elhabr/
+---
+
+This is the place where [Tony](https://tonyelhabr.rbind.io/) writes about electric power systems.

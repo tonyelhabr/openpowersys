@@ -1,0 +1,33 @@
+project:
+  type: website
+
+website:
+  favicon: assets/bolt.png
+  title: "openpowersys"
+  repo-url: https://github.com/tonyelhabr/openpowersys
+  cookie-consent: false
+  navbar:
+    background: '#1c1c1c'
+    search: true
+    left:
+      - href: about.qmd
+        text: About
+      - href: index.qmd
+        text: Blog
+    right:
+      - icon: github
+        href: https://github.com/tonyelhabr
+      - icon: FaBluesky
+        href: https://bsky.app/profile/tonyelhabr.bsky.social
+      - icon: linkedin
+        href: https://www.linkedin.com/in/tony-elhabr/
+
+format:
+  html:
+    theme:
+      light: [flatly, styles.css]
+      dark: [darkly, styles.css]
+    toc: true
+
+
+

@@ -1,0 +1,9 @@
+---
+title: "How to Optimize a Battery in ERCOT (pre-RTC+B)"
+description: "Backtesting configurable strategies for battery optimization with your own python package"
+author: "Tony ElHabr"
+date: "2025-12-05"
+draft: true
+---
+
+In this post I will...
