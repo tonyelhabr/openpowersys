@@ -3,7 +3,106 @@ title: "How to Optimize a Battery in ERCOT (pre-RTC+B)"
 description: "Backtesting configurable strategies for battery optimization with your own python package"
 author: "Tony ElHabr"
 date: "2025-12-05"
-draft: true
+image: battery_optimization.png
+execute:
+  include: true
+  echo: true
 ---
 
-In this post I will...
+## Introduction
+
+Grid-scale batteries can profit by buying electricity when prices are low and selling when prices spike. In ERCOT's 5-minute real-time market, prices can swing from near-zero to hundreds of dollars per MWh within hours—creating significant arbitrage opportunities.
+
+I built **[esrpy](https://github.com/tonyelhabr/esrpy)**, a Python library for backtesting battery trading strategies for RT energy arbitrage in ERCOT. Here's how the optimization works and what I learned about how the strategy would do on a real time period with a real node--[the very volatile RHESS2_ESS1](https://blog.gridstatus.io/exploring-extreme-prices-in-ercot-with-grid-status/).
+
+## The Optimization Problem
+
+The core strategy solves a linear program at each 5-minute interval, looking 55 minutes ahead (11 intervals). The objective is simple: **maximize revenue**.
+
+```
+maximize  Σ(t=0 to 10) [power[t] × price[t] × Δt]
+```
+
+Subject to physical constraints:
+
+- **SoC limits**: Battery can't go below minimum or above maximum capacity
+- **Power limits**: Charge/discharge rate capped at rated power
+- **Energy conservation**: `soc[t+1] = soc[t] - power[t] × Δt / η`
+
+After solving, the strategy applies post-processing to avoid trading in unfavorable conditions—a practical "bandaid" for not explicitly modeling cycling costs in the objective.
+
+## Running a Backtest
+
+Using `esrpy` with real ERCOT data:
+
+```python
+from esrpy import (
+    BacktestConfig,
+    BatteryConfig,
+    ConfigurableOptimizationStrategy,
+    PointInTimeData,
+    load_lmps,
+    run_backtest,
+)
+
+# Load historical LMP data
+indicative_lmps, actual_lmps = load_lmps(
+    actual_csv_path="actual_lmps.csv",
+    forecast_csv_path="indicative_lmps.csv",
+)
+
+pit_data = PointInTimeData(indicative_lmps, actual_lmps)
+
+# Run backtest with default 100 MW / 100 MWh battery
+results_df = run_backtest(
+    pit_data=pit_data,
+    strategy=ConfigurableOptimizationStrategy(),
+    battery_config=BatteryConfig(),
+    backtest_config=BacktestConfig(),
+)
+```
+
+## Results: One Week in October 2025
+
+I compared three strategies on a simulated 100 MW / 100 MWh battery:
+
+| Strategy | Total PnL | Cycles |
+|----------|-----------|--------|
+| Simple threshold | $17,511 | 2.8 |
+| Battery optimization | $18,430 | 5.9 |
+| Perfect foresight | $31,540 | 10.4 |
+
+- **Simple threshold** uses naive rules: sell if forecasted price > $100, buy if forecasted price < $10. It generated positive returns but left money on the table.
+
+- **Battery optimization** (the LP approach) captured more value with moderate cycling. The 55-minute horizon helps catch short-term spreads. Admittedly I thought that this would do much better than the simple thresholding approach, but
+
+![Battery optimization results](battery_optimization.png)
+
+- **Perfect foresight** sets the upper bound—the ~$13K gap between it and battery optimization shows the theoretical value of better forecasting for the battery optimization strategy.
+
+## Key Takeaways
+
+1. **Even simple optimization beats naive thresholds** — the LP approach earned 5% more PnL
+2. **Forecast horizon matters** — 55 minutes may miss larger daily patterns
+3. **This is just RT energy** — post-RTC+B, the real opportunity (and complexity) lies in co-optimizing across energy and AS products in real-time
+
+## Appendix
+
+### Scope: Real-time Energy Arbitrage
+
+This work focuses specifically on **real-time (RT) energy arbitrage**—buying and selling energy in ERCOT's 5-minute market. It's worth understanding what this *doesn't* cover:
+
+**Day-Ahead Market (DAM):** Trading in the DAM requires a fundamentally different approach. You're committing to positions ~24 hours in advance based on forecasts, with settlement against actual RT prices. The optimization horizon extends to 24+ hours, and you're essentially making bets on DA/RT price spreads. The uncertainty is much higher, and position sizing becomes critical.
+
+**Ancillary Services (AS):** Historically, AS has been procured entirely in the DAM. If you committed 20 MW to Responsive Reserve Service (RRS), those megawatts were locked up and unavailable for RT energy arbitrage.
+
+**What changes with RTC+B:** On December 5, 2025, ERCOT implements [Real-Time Co-Optimization plus Batteries (RTC+B)](https://www.tyba.ai/resources/guides/guide-to-ercot-rtcb/). This fundamentally changes the game:
+
+- AS will be co-optimized with energy in real-time, not just cleared day-ahead
+- SCED will see your full battery capability every 5 minutes and decide whether energy or AS is more valuable
+- DAM commitments become purely financial—you can adjust your RT strategy based on actual conditions
+- Storage assets get up to 10 bid pairs per interval for energy and 5 for AS
+
+The optimization problem becomes *much* more complex under RTC+B. You'd need to co-optimize across energy *and* multiple AS products (Reg Up, Reg Down, RRS, ECRS, Non-Spin) every 5 minutes, weighing opportunity costs, SoC management, and penalty exposure simultaneously.
+
+**This code is a good starting point** for understanding RT energy optimization in isolation—but would need significant expansion to handle post-RTC+B AS trading.
