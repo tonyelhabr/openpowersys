@@ -168,6 +168,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#the-optimization-problem" id="toc-the-optimization-problem" class="nav-link" data-scroll-target="#the-optimization-problem">The Optimization Problem</a></li>
   <li><a href="#running-a-backtest" id="toc-running-a-backtest" class="nav-link" data-scroll-target="#running-a-backtest">Running a Backtest</a></li>
   <li><a href="#results-one-week-in-october-2025" id="toc-results-one-week-in-october-2025" class="nav-link" data-scroll-target="#results-one-week-in-october-2025">Results: One Week in October 2025</a></li>
+  <li><a href="#simple-threshold-leaving-money-on-the-table" id="toc-simple-threshold-leaving-money-on-the-table" class="nav-link" data-scroll-target="#simple-threshold-leaving-money-on-the-table">Simple Threshold: Leaving Money on the Table</a>
+  <ul class="collapse">
+  <li><a href="#battery-optimization-balancing-returns-and-cycling" id="toc-battery-optimization-balancing-returns-and-cycling" class="nav-link" data-scroll-target="#battery-optimization-balancing-returns-and-cycling">Battery Optimization: Balancing Returns and Cycling</a></li>
+  <li><a href="#perfect-foresight-the-value-of-better-forecasting" id="toc-perfect-foresight-the-value-of-better-forecasting" class="nav-link" data-scroll-target="#perfect-foresight-the-value-of-better-forecasting">Perfect Foresight: The Value of Better Forecasting</a></li>
+  </ul></li>
   <li><a href="#key-takeaways" id="toc-key-takeaways" class="nav-link" data-scroll-target="#key-takeaways">Key Takeaways</a></li>
   <li><a href="#appendix" id="toc-appendix" class="nav-link" data-scroll-target="#appendix">Appendix</a>
   <ul class="collapse">
@@ -217,12 +222,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <section id="introduction" class="level2">
 <h2 class="anchored" data-anchor-id="introduction">Introduction</h2>
-<p>Grid-scale batteries can profit by buying electricity when prices are low and selling when prices spike. In ERCOT’s 5-minute real-time market, prices can swing from near-zero to hundreds of dollars per MWh within hours—creating significant arbitrage opportunities.</p>
-<p>I built <strong><a href="https://github.com/tonyelhabr/esrpy">esrpy</a></strong>, a Python library for backtesting battery trading strategies for RT energy arbitrage in ERCOT. Here’s how the optimization works and what I learned about how the strategy would do on a real time period with a real node–<a href="https://blog.gridstatus.io/exploring-extreme-prices-in-ercot-with-grid-status/">the very volatile RHESS2_ESS1</a>.</p>
+<p>Grid-scale batteries can profit by buying electricity when prices are low and selling when prices spike. In <a href="https://www.ercot.com/mktinfo/rtm">ERCOT’s 5-minute real-time market</a>, prices can swing from near-zero to hundreds of dollars per MWh within hours—creating significant arbitrage opportunities, like they did <a href="(https://blog.gridstatus.io/exploring-extreme-prices-in-ercot-with-grid-status/)">at Rabit Hill (RHESS2_ESS1) back in February 2025</a>.</p>
+<p>With that in mind, I built <strong><a href="https://github.com/tonyelhabr/esrpy">esrpy</a></strong>, a Python library for backtesting <a href="https://www.tyba.ai/resources/guides/energy-storage-optimization/">battery optimization</a> and trading strategies for RT energy arbitrage in ERCOT. This post describes how the optimization works and what I learned about how the strategy would do on actual data.</p>
 </section>
 <section id="the-optimization-problem" class="level2">
 <h2 class="anchored" data-anchor-id="the-optimization-problem">The Optimization Problem</h2>
-<p>The core strategy solves a linear program at each 5-minute interval, looking 55 minutes ahead (11 intervals). The objective is simple: <strong>maximize revenue</strong>.</p>
+<p>The core strategy <a href="https://www.cvxpy.org/examples/basic/linear_program.html">uses cvxpy to solve a linear program</a> at each 5-minute interval, looking 55 minutes ahead (11 intervals). The objective is simple: <strong>maximize revenue</strong>.</p>
 <pre><code>maximize  Σ(t=0 to 10) [power[t] × price[t] × Δt]</code></pre>
 <p>Subject to physical constraints:</p>
 <ul>
@@ -230,11 +235,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <li><strong>Power limits</strong>: Charge/discharge rate capped at rated power</li>
 <li><strong>Energy conservation</strong>: <code>soc[t+1] = soc[t] - power[t] × Δt / η</code></li>
 </ul>
-<p>After solving, the strategy applies post-processing to avoid trading in unfavorable conditions—a practical “bandaid” for not explicitly modeling cycling costs in the objective.</p>
+<p>After solving, the strategy applies post-processing to avoid trading in unfavorable conditions—a practical “bandaid” for not explicitly modeling <a href="https://www.tyba.ai/resources/case-studies/ercot-operating-strategy-asset-cycling/">cycling costs</a> in the objective.</p>
 </section>
 <section id="running-a-backtest" class="level2">
 <h2 class="anchored" data-anchor-id="running-a-backtest">Running a Backtest</h2>
-<p>Using <code>esrpy</code> with real ERCOT data:</p>
+<p>Using <code>esrpy</code> with the appropriate set of input data (see <a href="https://github.com/tonyelhabr/esrpy/blob/main/notebooks/data_retrieval.ipynb">here</a>), one can run a backtest like this.</p>
 <div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> esrpy <span class="im">import</span> (</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    BacktestConfig,</span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    BatteryConfig,</span>
@@ -244,25 +249,23 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    run_backtest,</span>
 <span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>)</span>
 <span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Load historical LMP data</span></span>
-<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>indicative_lmps, actual_lmps <span class="op">=</span> load_lmps(</span>
-<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    actual_csv_path<span class="op">=</span><span class="st">"actual_lmps.csv"</span>,</span>
-<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>    forecast_csv_path<span class="op">=</span><span class="st">"indicative_lmps.csv"</span>,</span>
-<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>pit_data <span class="op">=</span> PointInTimeData(indicative_lmps, actual_lmps)</span>
-<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a><span class="co"># Run backtest with default 100 MW / 100 MWh battery</span></span>
-<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>results_df <span class="op">=</span> run_backtest(</span>
-<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>    pit_data<span class="op">=</span>pit_data,</span>
-<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>    strategy<span class="op">=</span>ConfigurableOptimizationStrategy(),</span>
-<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a>    battery_config<span class="op">=</span>BatteryConfig(),</span>
-<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a>    backtest_config<span class="op">=</span>BacktestConfig(),</span>
-<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>forecast_lmps, actual_lmps <span class="op">=</span> load_lmps(</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    actual_csv_path<span class="op">=</span><span class="st">"actual_lmps.csv"</span>,</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    forecast_csv_path<span class="op">=</span><span class="st">"forecast_lmps.csv"</span>,</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>pit_data <span class="op">=</span> PointInTimeData(forecast_lmps, actual_lmps)</span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>results_df <span class="op">=</span> run_backtest(</span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>    pit_data<span class="op">=</span>pit_data,</span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>    strategy<span class="op">=</span>ConfigurableOptimizationStrategy(),</span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>    battery_config<span class="op">=</span>BatteryConfig(),</span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>    backtest_config<span class="op">=</span>BacktestConfig(),</span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </section>
 <section id="results-one-week-in-october-2025" class="level2">
 <h2 class="anchored" data-anchor-id="results-one-week-in-october-2025">Results: One Week in October 2025</h2>
-<p>I compared three strategies on a simulated 100 MW / 100 MWh battery:</p>
+<p>I compared three strategies on a simulated 100 MW / 100 MWh battery, using real ERCOT data for Oct.&nbsp;1-7, 2025, at the RHESS2_ESS1 node. (5-minute <a href="https://www.ercot.com/mp/data-products/data-product-details?id=np6-970-cd">indicative prices</a> were used for forecasts.)</p>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -289,25 +292,47 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 </tbody>
 </table>
-<ul>
-<li><p><strong>Simple threshold</strong> uses naive rules: sell if forecasted price &gt; $100, buy if forecasted price &lt; $10. It generated positive returns but left money on the table.</p></li>
-<li><p><strong>Battery optimization</strong> (the LP approach) captured more value with moderate cycling. The 55-minute horizon helps catch short-term spreads. Admittedly I thought that this would do much better than the simple thresholding approach, but</p></li>
-</ul>
+</section>
+<section id="simple-threshold-leaving-money-on-the-table" class="level2">
+<h2 class="anchored" data-anchor-id="simple-threshold-leaving-money-on-the-table">Simple Threshold: Leaving Money on the Table</h2>
+<p>The simple threshold strategy uses naive rules: sell if forecasted price &gt; $100, buy if forecasted price &lt; $10. While it generated positive returns, the extremely low cycling (2.77 cycles) reveals a fundamental issue—the thresholds were too conservative. This cautious trading behavior left profitable opportunities on the table, resulting in the lowest PnL of the three strategies.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="simple_threshold.png" class="img-fluid figure-img"></p>
+<figcaption>Simple threshold results</figcaption>
+</figure>
+</div>
+<p>The gap between this approach and battery optimization suggests that even modest sophistication in strategy design can capture meaningful additional value.</p>
+<section id="battery-optimization-balancing-returns-and-cycling" class="level3">
+<h3 class="anchored" data-anchor-id="battery-optimization-balancing-returns-and-cycling">Battery Optimization: Balancing Returns and Cycling</h3>
+<p>The LP-based optimization strategy achieved a respectable ~$18.4K PnL with moderate cycling (~6 cycles), striking a reasonable balance between capturing spreads and managing battery wear. This 5% improvement over simple thresholds demonstrates the value of dynamic optimization.</p>
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
 <p><img src="battery_optimization.png" class="img-fluid figure-img"></p>
 <figcaption>Battery optimization results</figcaption>
 </figure>
 </div>
-<ul>
-<li><strong>Perfect foresight</strong> sets the upper bound—the ~$13K gap between it and battery optimization shows the theoretical value of better forecasting for the battery optimization strategy.</li>
-</ul>
+<p>However, there’s a key limitation: the optimizer only sees 11 intervals (~55 minutes) ahead. This short horizon may cause it to miss longer-term price patterns and manage state-of-charge suboptimally. For instance, if a major price spike is forecasted 3 hours out, the battery might discharge too early on smaller spreads, leaving insufficient capacity for the larger opportunity.</p>
+<p>A longer forecast horizon—perhaps 12 hours—could help the optimizer anticipate these larger price swings and make more strategic decisions about when to preserve capacity.</p>
+</section>
+<section id="perfect-foresight-the-value-of-better-forecasting" class="level3">
+<h3 class="anchored" data-anchor-id="perfect-foresight-the-value-of-better-forecasting">Perfect Foresight: The Value of Better Forecasting</h3>
+<p>The perfect foresight strategy sets the theoretical upper bound, achieving ~$31.5K by knowing future prices exactly and aggressively trading around price spreads. The ~$13K gap between perfect foresight and battery optimization represents the theoretical value of improved forecasting for the LP approach.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="perfect_foresight.png" class="img-fluid figure-img"></p>
+<figcaption>Perfect foresight results</figcaption>
+</figure>
+</div>
+<p>But there’s an important caveat: perfect foresight cycled nearly twice as much as battery optimization (~10 vs ~6 cycles). This aggressive cycling would face penalties if hurdle costs or degradation were properly modeled in the objective function. In practice, the PnL advantage would shrink once you account for the real cost of battery wear from those extra cycles.</p>
+</section>
 </section>
 <section id="key-takeaways" class="level2">
 <h2 class="anchored" data-anchor-id="key-takeaways">Key Takeaways</h2>
 <ol type="1">
 <li><strong>Even simple optimization beats naive thresholds</strong> — the LP approach earned 5% more PnL</li>
 <li><strong>Forecast horizon matters</strong> — 55 minutes may miss larger daily patterns</li>
+<li><strong>Perfect foresight reveals two things</strong>: the upside of better forecasting (~$13K) and the importance of modeling cycling costs (nearly 2x cycles vs.&nbsp;battery optimization)</li>
 <li><strong>This is just RT energy</strong> — post-RTC+B, the real opportunity (and complexity) lies in co-optimizing across energy and AS products in real-time</li>
 </ol>
 </section>
@@ -315,7 +340,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h2 class="anchored" data-anchor-id="appendix">Appendix</h2>
 <section id="scope-real-time-energy-arbitrage" class="level3">
 <h3 class="anchored" data-anchor-id="scope-real-time-energy-arbitrage">Scope: Real-time Energy Arbitrage</h3>
-<p>This work focuses specifically on <strong>real-time (RT) energy arbitrage</strong>—buying and selling energy in ERCOT’s 5-minute market. It’s worth understanding what this <em>doesn’t</em> cover:</p>
+<p>This work focuses specifically on <a href="https://modoenergy.com/research/en/comparing-battery-energy-storage-arbitrage-strategies-in-ercot"><strong>real-time (RT) energy arbitrage</strong></a>—buying and selling energy in ERCOT’s 5-minute market. It’s worth understanding what this <em>doesn’t</em> cover:</p>
 <p><strong>Day-Ahead Market (DAM):</strong> Trading in the DAM requires a fundamentally different approach. You’re committing to positions ~24 hours in advance based on forecasts, with settlement against actual RT prices. The optimization horizon extends to 24+ hours, and you’re essentially making bets on DA/RT price spreads. The uncertainty is much higher, and position sizing becomes critical.</p>
 <p><strong>Ancillary Services (AS):</strong> Historically, AS has been procured entirely in the DAM. If you committed 20 MW to Responsive Reserve Service (RRS), those megawatts were locked up and unavailable for RT energy arbitrage.</p>
 <p><strong>What changes with RTC+B:</strong> On December 5, 2025, ERCOT implements <a href="https://www.tyba.ai/resources/guides/guide-to-ercot-rtcb/">Real-Time Co-Optimization plus Batteries (RTC+B)</a>. This fundamentally changes the game:</p>

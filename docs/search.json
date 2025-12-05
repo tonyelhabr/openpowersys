@@ -4,42 +4,49 @@
     "href": "posts/esrpy/index.html",
     "title": "How to Optimize a Battery in ERCOT (pre-RTC+B)",
     "section": "",
-    "text": "Grid-scale batteries can profit by buying electricity when prices are low and selling when prices spike. In ERCOT’s 5-minute real-time market, prices can swing from near-zero to hundreds of dollars per MWh within hours—creating significant arbitrage opportunities.\nI built esrpy, a Python library for backtesting battery trading strategies for RT energy arbitrage in ERCOT. Here’s how the optimization works and what I learned about how the strategy would do on a real time period with a real node–the very volatile RHESS2_ESS1."
+    "text": "Grid-scale batteries can profit by buying electricity when prices are low and selling when prices spike. In ERCOT’s 5-minute real-time market, prices can swing from near-zero to hundreds of dollars per MWh within hours—creating significant arbitrage opportunities, like they did at Rabit Hill (RHESS2_ESS1) back in February 2025.\nWith that in mind, I built esrpy, a Python library for backtesting battery optimization and trading strategies for RT energy arbitrage in ERCOT. This post describes how the optimization works and what I learned about how the strategy would do on actual data."
   },
   {
     "objectID": "posts/esrpy/index.html#introduction",
     "href": "posts/esrpy/index.html#introduction",
     "title": "How to Optimize a Battery in ERCOT (pre-RTC+B)",
     "section": "",
-    "text": "Grid-scale batteries can profit by buying electricity when prices are low and selling when prices spike. In ERCOT’s 5-minute real-time market, prices can swing from near-zero to hundreds of dollars per MWh within hours—creating significant arbitrage opportunities.\nI built esrpy, a Python library for backtesting battery trading strategies for RT energy arbitrage in ERCOT. Here’s how the optimization works and what I learned about how the strategy would do on a real time period with a real node–the very volatile RHESS2_ESS1."
+    "text": "Grid-scale batteries can profit by buying electricity when prices are low and selling when prices spike. In ERCOT’s 5-minute real-time market, prices can swing from near-zero to hundreds of dollars per MWh within hours—creating significant arbitrage opportunities, like they did at Rabit Hill (RHESS2_ESS1) back in February 2025.\nWith that in mind, I built esrpy, a Python library for backtesting battery optimization and trading strategies for RT energy arbitrage in ERCOT. This post describes how the optimization works and what I learned about how the strategy would do on actual data."
   },
   {
     "objectID": "posts/esrpy/index.html#the-optimization-problem",
     "href": "posts/esrpy/index.html#the-optimization-problem",
     "title": "How to Optimize a Battery in ERCOT (pre-RTC+B)",
     "section": "The Optimization Problem",
-    "text": "The Optimization Problem\nThe core strategy solves a linear program at each 5-minute interval, looking 55 minutes ahead (11 intervals). The objective is simple: maximize revenue.\nmaximize  Σ(t=0 to 10) [power[t] × price[t] × Δt]\nSubject to physical constraints:\n\nSoC limits: Battery can’t go below minimum or above maximum capacity\nPower limits: Charge/discharge rate capped at rated power\nEnergy conservation: soc[t+1] = soc[t] - power[t] × Δt / η\n\nAfter solving, the strategy applies post-processing to avoid trading in unfavorable conditions—a practical “bandaid” for not explicitly modeling cycling costs in the objective."
+    "text": "The Optimization Problem\nThe core strategy uses cvxpy to solve a linear program at each 5-minute interval, looking 55 minutes ahead (11 intervals). The objective is simple: maximize revenue.\nmaximize  Σ(t=0 to 10) [power[t] × price[t] × Δt]\nSubject to physical constraints:\n\nSoC limits: Battery can’t go below minimum or above maximum capacity\nPower limits: Charge/discharge rate capped at rated power\nEnergy conservation: soc[t+1] = soc[t] - power[t] × Δt / η\n\nAfter solving, the strategy applies post-processing to avoid trading in unfavorable conditions—a practical “bandaid” for not explicitly modeling cycling costs in the objective."
   },
   {
     "objectID": "posts/esrpy/index.html#running-a-backtest",
     "href": "posts/esrpy/index.html#running-a-backtest",
     "title": "How to Optimize a Battery in ERCOT (pre-RTC+B)",
     "section": "Running a Backtest",
-    "text": "Running a Backtest\nUsing esrpy with real ERCOT data:\nfrom esrpy import (\n    BacktestConfig,\n    BatteryConfig,\n    ConfigurableOptimizationStrategy,\n    PointInTimeData,\n    load_lmps,\n    run_backtest,\n)\n\n# Load historical LMP data\nindicative_lmps, actual_lmps = load_lmps(\n    actual_csv_path=\"actual_lmps.csv\",\n    forecast_csv_path=\"indicative_lmps.csv\",\n)\n\npit_data = PointInTimeData(indicative_lmps, actual_lmps)\n\n# Run backtest with default 100 MW / 100 MWh battery\nresults_df = run_backtest(\n    pit_data=pit_data,\n    strategy=ConfigurableOptimizationStrategy(),\n    battery_config=BatteryConfig(),\n    backtest_config=BacktestConfig(),\n)"
+    "text": "Running a Backtest\nUsing esrpy with the appropriate set of input data (see here), one can run a backtest like this.\nfrom esrpy import (\n    BacktestConfig,\n    BatteryConfig,\n    ConfigurableOptimizationStrategy,\n    PointInTimeData,\n    load_lmps,\n    run_backtest,\n)\n\nforecast_lmps, actual_lmps = load_lmps(\n    actual_csv_path=\"actual_lmps.csv\",\n    forecast_csv_path=\"forecast_lmps.csv\",\n)\n\npit_data = PointInTimeData(forecast_lmps, actual_lmps)\n\nresults_df = run_backtest(\n    pit_data=pit_data,\n    strategy=ConfigurableOptimizationStrategy(),\n    battery_config=BatteryConfig(),\n    backtest_config=BacktestConfig(),\n)"
   },
   {
     "objectID": "posts/esrpy/index.html#results-one-week-in-october-2025",
     "href": "posts/esrpy/index.html#results-one-week-in-october-2025",
     "title": "How to Optimize a Battery in ERCOT (pre-RTC+B)",
     "section": "Results: One Week in October 2025",
-    "text": "Results: One Week in October 2025\nI compared three strategies on a simulated 100 MW / 100 MWh battery:\n\n\n\nStrategy\nTotal PnL\nCycles\n\n\n\n\nSimple threshold\n$17,511\n2.8\n\n\nBattery optimization\n$18,430\n5.9\n\n\nPerfect foresight\n$31,540\n10.4\n\n\n\n\nSimple threshold uses naive rules: sell if forecasted price &gt; $100, buy if forecasted price &lt; $10. It generated positive returns but left money on the table.\nBattery optimization (the LP approach) captured more value with moderate cycling. The 55-minute horizon helps catch short-term spreads. Admittedly I thought that this would do much better than the simple thresholding approach, but\n\n\n\n\nBattery optimization results\n\n\n\nPerfect foresight sets the upper bound—the ~$13K gap between it and battery optimization shows the theoretical value of better forecasting for the battery optimization strategy."
+    "text": "Results: One Week in October 2025\nI compared three strategies on a simulated 100 MW / 100 MWh battery, using real ERCOT data for Oct. 1-7, 2025, at the RHESS2_ESS1 node. (5-minute indicative prices were used for forecasts.)\n\n\n\nStrategy\nTotal PnL\nCycles\n\n\n\n\nSimple threshold\n$17,511\n2.8\n\n\nBattery optimization\n$18,430\n5.9\n\n\nPerfect foresight\n$31,540\n10.4"
+  },
+  {
+    "objectID": "posts/esrpy/index.html#simple-threshold-leaving-money-on-the-table",
+    "href": "posts/esrpy/index.html#simple-threshold-leaving-money-on-the-table",
+    "title": "How to Optimize a Battery in ERCOT (pre-RTC+B)",
+    "section": "Simple Threshold: Leaving Money on the Table",
+    "text": "Simple Threshold: Leaving Money on the Table\nThe simple threshold strategy uses naive rules: sell if forecasted price &gt; $100, buy if forecasted price &lt; $10. While it generated positive returns, the extremely low cycling (2.77 cycles) reveals a fundamental issue—the thresholds were too conservative. This cautious trading behavior left profitable opportunities on the table, resulting in the lowest PnL of the three strategies.\n\n\n\nSimple threshold results\n\n\nThe gap between this approach and battery optimization suggests that even modest sophistication in strategy design can capture meaningful additional value.\n\nBattery Optimization: Balancing Returns and Cycling\nThe LP-based optimization strategy achieved a respectable ~$18.4K PnL with moderate cycling (~6 cycles), striking a reasonable balance between capturing spreads and managing battery wear. This 5% improvement over simple thresholds demonstrates the value of dynamic optimization.\n\n\n\nBattery optimization results\n\n\nHowever, there’s a key limitation: the optimizer only sees 11 intervals (~55 minutes) ahead. This short horizon may cause it to miss longer-term price patterns and manage state-of-charge suboptimally. For instance, if a major price spike is forecasted 3 hours out, the battery might discharge too early on smaller spreads, leaving insufficient capacity for the larger opportunity.\nA longer forecast horizon—perhaps 12 hours—could help the optimizer anticipate these larger price swings and make more strategic decisions about when to preserve capacity.\n\n\nPerfect Foresight: The Value of Better Forecasting\nThe perfect foresight strategy sets the theoretical upper bound, achieving ~$31.5K by knowing future prices exactly and aggressively trading around price spreads. The ~$13K gap between perfect foresight and battery optimization represents the theoretical value of improved forecasting for the LP approach.\n\n\n\nPerfect foresight results\n\n\nBut there’s an important caveat: perfect foresight cycled nearly twice as much as battery optimization (~10 vs ~6 cycles). This aggressive cycling would face penalties if hurdle costs or degradation were properly modeled in the objective function. In practice, the PnL advantage would shrink once you account for the real cost of battery wear from those extra cycles."
   },
   {
     "objectID": "posts/esrpy/index.html#key-takeaways",
     "href": "posts/esrpy/index.html#key-takeaways",
     "title": "How to Optimize a Battery in ERCOT (pre-RTC+B)",
     "section": "Key Takeaways",
-    "text": "Key Takeaways\n\nEven simple optimization beats naive thresholds — the LP approach earned 5% more PnL\nForecast horizon matters — 55 minutes may miss larger daily patterns\nThis is just RT energy — post-RTC+B, the real opportunity (and complexity) lies in co-optimizing across energy and AS products in real-time"
+    "text": "Key Takeaways\n\nEven simple optimization beats naive thresholds — the LP approach earned 5% more PnL\nForecast horizon matters — 55 minutes may miss larger daily patterns\nPerfect foresight reveals two things: the upside of better forecasting (~$13K) and the importance of modeling cycling costs (nearly 2x cycles vs. battery optimization)\nThis is just RT energy — post-RTC+B, the real opportunity (and complexity) lies in co-optimizing across energy and AS products in real-time"
   },
   {
     "objectID": "posts/esrpy/index.html#appendix",
